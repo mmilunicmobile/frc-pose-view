@@ -4,9 +4,9 @@ PathPlanner sucks. We're your solution.
 
 For far too long we have been stuck in the middle of the bell curve, chasing both "simplicity" and "performance" with UI based auto writing software. These create neither. Instead you are left with a confusing mess of 1000 paths to do what you know would only have needed a few lines of code to generalize, and you aren't even winning worlds.
 
-> "We use pin-to-point." —Sudhir Chebiyyam, 2025 World Champion, probably
+> "We use point-to-point." —Sudhir Chebiyyam, 2025 World Champion, probably
 
-Cheesy Poofs, Jack in the Bot, OP Robotics, every team worth their salt is using pin-to-point. Why are you letting your team fall behind?
+Cheesy Poofs, Jack in the Bot, OP Robotics, every team worth their salt is using point-to-point. Why are you letting your team fall behind?
 
 Pose View allows you to hover over a Pose2d in your code and see its position right in VS Code. With this extension you can finally get the convenience of PathPlanner or Choreo while breaking free from their constraints, unlocking your robots ultimate potential.
 
