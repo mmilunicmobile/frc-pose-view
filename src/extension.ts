@@ -32,14 +32,20 @@ export function activate(context: vscode.ExtensionContext) {
       token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.Hover> {
       const range = document.getWordRangeAtPosition(position);
-      const word = document.getText(range);
-
-      // Example: Provide a simple hover for a specific word
-      if (word === "Pose2d") {
-        const markdown = new vscode.MarkdownString(
-          `Theoretically there should be stuff here.`
+      let success = vscode.commands.executeCommand<vscode.Location[]>(
+            'vscode.executeDefinitionProvider',
+            document.uri,
+            position
         );
-        return new vscode.Hover(markdown, range);
+      // Example: Provide a simple hover if the user is hovering over a variable of type Pose2d
+      if (true) {
+        const output = success.then((succ) => {
+          const markdown = new vscode.MarkdownString(
+            `Theoretically there should be stuff here. ${succ.join(", ")}`
+          );
+          return new vscode.Hover(markdown, range);
+        });
+        return output;
       }
       return undefined;
     },
