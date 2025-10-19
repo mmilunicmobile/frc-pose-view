@@ -40,10 +40,17 @@ export function activate(context: vscode.ExtensionContext) {
       // Example: Provide a simple hover if the user is hovering over a variable of type Pose2d
       if (true) {
         const output = success.then((succ) => {
-          const markdown = new vscode.MarkdownString(
-            `Theoretically there should be stuff here. ${succ.join(", ")}`
-          );
-          return new vscode.Hover(markdown, range);
+          if (succ?.length > 0) {
+            const markdown = new vscode.MarkdownString(
+              `Theoretically there should be stuff here. ${succ.length}. [here](${succ[0].uri})`
+            );
+            return new vscode.Hover(markdown, range);
+          } else {
+            const markdown = new vscode.MarkdownString(
+              `No definition found.`
+            );
+            return new vscode.Hover(markdown, range);
+          }
         });
         return output;
       }
