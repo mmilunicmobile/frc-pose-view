@@ -328,11 +328,11 @@ async function evaluateExpressionAtRange(document: vscode.TextDocument, range: v
 }
 
 export class PoseHoverProvider implements vscode.HoverProvider {
-    provideHover(
+    async provideHover(
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken
-    ): vscode.ProviderResult<vscode.Hover> {
+    ): Promise<vscode.Hover | undefined> {
         const range = document.getWordRangeAtPosition(position);
         const word = document.getText(range);
 
@@ -340,47 +340,107 @@ export class PoseHoverProvider implements vscode.HoverProvider {
             return undefined;
         }
 
-        // Get type definition information directly
-        return vscode.commands.executeCommand<vscode.Location[]>(
+        // 1. Try to find a match from type definitions (covers variables: bob -> Pose2d)
+        const typeResults = await vscode.commands.executeCommand<vscode.Location[]>(
             'vscode.executeTypeDefinitionProvider',
             document.uri,
             position
-        ).then(typeResults => {
-            if (!typeResults || typeResults.length === 0) {
-                return undefined;
-            }
+        );
 
-            // Check if definition matches any of our types
+        if (typeResults && typeResults.length > 0) {
             for (const result of typeResults) {
                 const typePath = result.uri.path;
-                // Get filename without extension
                 const typeName = typePath.split('/').pop()?.replace(/\.[^/.]+$/, '');
-
                 if (range && typeName && POSE_TYPES.includes(typeName)) {
-                    const markdown = new vscode.MarkdownString();
-                    markdown.appendCodeblock(`${word}: ${typeName}`, 'java');
+                    return this.generateHover(document, position, word, typeName, result.uri);
+                }
+            }
+        }
 
-                    // Get full expression that is being hovered
-                    const fullExpressionRange = findExpressionAtPosition(document, position);
+        // 2. Try to find a match from definitions (covers members: getX -> defined in Pose2d.java)
+        const defResults = await vscode.commands.executeCommand<vscode.Location[]>(
+            'vscode.executeDefinitionProvider',
+            document.uri,
+            position
+        );
 
-                    if (!fullExpressionRange) return undefined;
+        if (defResults && defResults.length > 0) {
+            for (const result of defResults) {
+                const typePath = result.uri.path;
+                const typeName = typePath.split('/').pop()?.replace(/\.[^/.]+$/, '');
+                if (range && typeName && POSE_TYPES.includes(typeName)) {
+                    return this.generateHover(document, position, word, typeName, result.uri);
+                }
+            }
+        }
 
-                    const fullExpression = document.getText(fullExpressionRange);
+        // 3. Fallback: Check if the expression itself looks like a Pose Type usage (covers statics: Rotation2d.fromDegrees)
+        const fullExpressionRange = findExpressionAtPosition(document, position);
+        if (fullExpressionRange) {
+            const fullExpression = document.getText(fullExpressionRange).trim();
 
-                    markdown.appendMarkdown(`\n\n**Pose Variable: \`${word}\`**`);
-                    markdown.appendMarkdown(`\n\n*This is a ${typeName} - pose visualization coming soon!*`);
-                    markdown.appendCodeblock(`\n${fullExpression}`, 'java');
-
-                    // Return the promise directly which resolves to the hover
-                    return evaluateExpressionAtRange(document, fullExpressionRange).then(parsed => {
-                        markdown.appendMarkdown(`\n\n\`\`\`javascript\n${parsed}\n\`\`\``);
-                        markdown.appendMarkdown(`\n\n[Go to type definition](${result.uri})`);
-                        return new vscode.Hover(markdown, fullExpressionRange);
-                    });
+            // Check if string starts with Known Type
+            for (const typeName of POSE_TYPES) {
+                if (fullExpression.startsWith(typeName + ".") || fullExpression.startsWith("new " + typeName)) {
+                    return this.generateHover(document, position, word, typeName, undefined);
                 }
             }
 
-            return undefined;
+            // 4. Deep Fallback: Trace the ROOT of the expression chain
+            // If we have "newPose.getTranslation().getX()", scanning left gives us the full chain.
+            // We want to check the Type Verification of the *first* identifier in that chain ("newPose").
+            const identifiers = getIdentifiers(fullExpression);
+            if (identifiers.length > 0) {
+                const rootIdentifier = identifiers[0]; // e.g. "newPose"
+                // Calculate position of root identifier
+                const rootPosition = fullExpressionRange.start.translate(0, rootIdentifier.startOffset);
+
+                // Check Type Definition of the root
+                const rootTypeResults = await vscode.commands.executeCommand<vscode.Location[]>(
+                    'vscode.executeTypeDefinitionProvider',
+                    document.uri,
+                    rootPosition // Use 'newPose' position, ignoring the '.getTranslation().getX()' part
+                );
+
+                if (rootTypeResults && rootTypeResults.length > 0) {
+                    for (const result of rootTypeResults) {
+                        const typePath = result.uri.path;
+                        const typeName = typePath.split('/').pop()?.replace(/\.[^/.]+$/, '');
+                        if (typeName && POSE_TYPES.includes(typeName)) {
+                            // The ROOT is a Pose type, so the whole chain is a valid pose operation
+                            // (or at least related to it). We trigger the hover.
+                            return this.generateHover(document, position, word, typeName, result.uri);
+                        }
+                    }
+                }
+            }
+        }
+
+        return undefined;
+    }
+
+    private generateHover(document: vscode.TextDocument, position: vscode.Position, word: string, typeName: string, typeDefUri: vscode.Uri | undefined): Promise<vscode.Hover | undefined> {
+        const markdown = new vscode.MarkdownString();
+        markdown.appendCodeblock(`${word}: ${typeName}`, 'java');
+
+        // Get full expression that is being hovered
+        const fullExpressionRange = findExpressionAtPosition(document, position);
+
+        if (!fullExpressionRange) return Promise.resolve(undefined);
+
+        const fullExpression = document.getText(fullExpressionRange);
+
+        markdown.appendMarkdown(`\n\n**Pose Variable: \`${word}\`**`);
+        markdown.appendMarkdown(`\n\n*This is a ${typeName} - pose visualization coming soon!*`);
+        markdown.appendCodeblock(`\n${fullExpression}`, 'java');
+
+        // Return the promise directly which resolves to the hover
+        return evaluateExpressionAtRange(document, fullExpressionRange).then(parsed => {
+            markdown.appendMarkdown(`\n\n\`\`\`javascript\n${parsed}\n\`\`\``);
+            if (typeDefUri) {
+                markdown.appendMarkdown(`\n\n[Go to type definition](${typeDefUri})`);
+            }
+            return new vscode.Hover(markdown, fullExpressionRange);
         });
     }
 }

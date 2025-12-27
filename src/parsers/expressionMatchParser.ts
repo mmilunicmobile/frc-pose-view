@@ -375,6 +375,13 @@ class JavaExprVisitor extends BaseJavaExprVisitor {
 
         // Check if we are building up a static field name string
         if (typeof result === 'string') {
+            if (fieldCallback) {
+                const idToken = ctx.Identifier[0];
+                const val = fieldCallback(idToken.startOffset, idToken.endOffset + 1);
+                if (val !== undefined) {
+                    return val;
+                }
+            }
             const compositeName = result + "." + memberName;
 
             // Check if it is a known field
