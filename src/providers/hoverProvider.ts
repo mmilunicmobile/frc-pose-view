@@ -421,7 +421,6 @@ export class PoseHoverProvider implements vscode.HoverProvider {
 
     private generateHover(document: vscode.TextDocument, position: vscode.Position, word: string, typeName: string, typeDefUri: vscode.Uri | undefined): Promise<vscode.Hover | undefined> {
         const markdown = new vscode.MarkdownString();
-        markdown.appendCodeblock(`${word}: ${typeName}`, 'java');
 
         // Get full expression that is being hovered
         const fullExpressionRange = findExpressionAtPosition(document, position);
@@ -430,17 +429,13 @@ export class PoseHoverProvider implements vscode.HoverProvider {
 
         const fullExpression = document.getText(fullExpressionRange);
 
-        markdown.appendMarkdown(`\n\n**Pose Variable: \`${word}\`**`);
-        markdown.appendMarkdown(`\n\n*This is a ${typeName} - pose visualization coming soon!*`);
-        markdown.appendCodeblock(`\n${fullExpression}`, 'java');
-
         // Return the promise directly which resolves to the hover
         return evaluateExpressionAtRange(document, fullExpressionRange).then(parsed => {
-            markdown.appendMarkdown(`\n\n\`\`\`javascript\n${parsed}\n\`\`\``);
-            if (typeDefUri) {
-                markdown.appendMarkdown(`\n\n[Go to type definition](${typeDefUri})`);
+            if (parsed !== null && parsed !== undefined) {
+                markdown.appendCodeblock(`... = ${parsed}`, 'java');
+                return new vscode.Hover(markdown, fullExpressionRange);
             }
-            return new vscode.Hover(markdown, fullExpressionRange);
+            return undefined;
         });
     }
 }

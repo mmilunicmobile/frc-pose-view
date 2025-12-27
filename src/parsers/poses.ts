@@ -97,7 +97,7 @@ export class Rotation2d {
     }
 
     toString(): string {
-        return `Rotation2d(Rads: ${this.m_value.toFixed(2)}, Deg: ${(this.m_value * 180 / Math.PI).toFixed(2)})`;
+        return `Rotation2d(Rads: ${this.m_value.toFixed(3)}, Deg: ${(this.m_value * 180 / Math.PI).toFixed(3)})`;
     }
 
     equals(obj: any): boolean {
@@ -192,7 +192,7 @@ export class Translation2d {
     }
 
     toString(): string {
-        return `Translation2d(X: ${this.m_x.toFixed(2)}, Y: ${this.m_y.toFixed(2)})`;
+        return `Translation2d(X: ${this.m_x.toFixed(3)}, Y: ${this.m_y.toFixed(3)})`;
     }
 
     equals(obj: any): boolean {
