@@ -1,4 +1,4 @@
-import { Pose2d, Rotation2d } from "./poses.js";
+import { Pose2d, Rotation2d, Translation2d } from "./poses.js";
 import { createToken, Lexer, CstParser, CstNode, ICstVisitor, IToken, ParserMethod } from "chevrotain";
 
 const WhiteSpace = createToken({
@@ -192,35 +192,72 @@ const allMethods: Record<string, (args: any) => any> = {
     "new Pose2d 3": (args: any) => {
         return new Pose2d(args[0], args[1], args[2]);
     },
+    "new Pose2d 2": (args: any) => {
+        return new Pose2d(args[0], args[1]);
+    },
+    "new Translation2d 2": (args: any) => {
+        return new Translation2d(args[0], args[1]);
+    },
     "new Rotation2d 1": (args: any) => {
         return new Rotation2d(args[0]);
+    },
+    "new Rotation2d 2": (args: any) => {
+        return new Rotation2d(args[0], args[1]);
     },
     "Pose2d 3": (args: any) => {
         return new Pose2d(args[0], args[1], args[2]);
     },
+    "Pose2d 2": (args: any) => {
+        return new Pose2d(args[0], args[1]);
+    },
+    "Translation2d 2": (args: any) => {
+        return new Translation2d(args[0], args[1]);
+    },
     "Rotation2d 1": (args: any) => {
         return new Rotation2d(args[0]);
     },
+    "Rotation2d 2": (args: any) => {
+        return new Rotation2d(args[0], args[1]);
+    },
     "Rotation2d.fromRadians 1": (args: any) => {
-        return new Rotation2d(args[0]);
+        return Rotation2d.fromRadians(args[0]);
     },
     "Rotation2d.fromDegrees 1": (args: any) => {
-        return new Rotation2d(args[0] * Math.PI / 180);
+        return Rotation2d.fromDegrees(args[0]);
     },
     "Rotation2d.fromRotations 1": (args: any) => {
-        return new Rotation2d(args[0] * 2 * Math.PI);
+        return Rotation2d.fromRotations(args[0]);
+    },
+    "new Pose2d 0": (args: any) => {
+        return new Pose2d(0, 0, new Rotation2d(0));
+    },
+    "new Translation2d 0": (args: any) => {
+        return new Translation2d(0, 0);
+    },
+    "new Rotation2d 0": (args: any) => {
+        return new Rotation2d(0);
+    },
+    "Pose2d 0": (args: any) => {
+        return new Pose2d(0, 0, new Rotation2d(0));
+    },
+    "Translation2d 0": (args: any) => {
+        return new Translation2d(0, 0);
+    },
+    "Rotation2d 0": (args: any) => {
+        return new Rotation2d(0);
     }
 }
 
 const defaultFields: Record<string, any> = {
-    "Rotation2d.kZero": new Rotation2d(0),
-    "Rotation2d.kCW_Pi_2": new Rotation2d(-Math.PI / 2),
-    "Rotation2d.kCW_90deg": new Rotation2d(-Math.PI / 2),
-    "Rotation2d.kCCW_Pi_2": new Rotation2d(Math.PI / 2),
-    "Rotation2d.kCCW_90deg": new Rotation2d(Math.PI / 2),
-    "Rotation2d.kPi": new Rotation2d(Math.PI),
-    "Rotation2d.k180deg": new Rotation2d(Math.PI),
-    "Pose2d.kZero": new Pose2d(0, 0, new Rotation2d(0)),
+    "Rotation2d.kZero": Rotation2d.kZero,
+    "Rotation2d.kCW_Pi_2": Rotation2d.kCW_Pi_2,
+    "Rotation2d.kCW_90deg": Rotation2d.kCW_90deg,
+    "Rotation2d.kCCW_Pi_2": Rotation2d.kCCW_Pi_2,
+    "Rotation2d.kCCW_90deg": Rotation2d.kCCW_90deg,
+    "Rotation2d.kPi": Rotation2d.kPi,
+    "Rotation2d.k180deg": Rotation2d.k180deg,
+    "Translation2d.kZero": Translation2d.kZero,
+    "Pose2d.kZero": Pose2d.kZero,
     "Math.PI": Math.PI,
     "Math.TAU": Math.PI * 2,
     "PI": Math.PI,
@@ -228,8 +265,12 @@ const defaultFields: Record<string, any> = {
 }
 
 const allowedMethods = new Set([
-    "getX", "getY", "getRotation",
-    "getDegrees", "getRadians", "getSin", "getCos"
+    "getX", "getY", "getRotation", "getTranslation",
+    "getDegrees", "getRadians", "getSin", "getCos", "getTan", "getRotations",
+    "getDistance", "getSquaredDistance", "getNorm", "getSquaredNorm", "getAngle",
+    "dot", "cross",
+    "plus", "minus", "unaryMinus", "times", "div",
+    "rotateBy", "rotateAround"
 ]);
 
 const fetchField = (ctx: any) => {
