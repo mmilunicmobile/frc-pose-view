@@ -1,4 +1,4 @@
-package examples;
+package java.src.examples;
 
 public record Rotation2d(double heading) {
     public static final Rotation2d kZero = new Rotation2d(0);

@@ -14,7 +14,7 @@ const NumberLiteral = createToken({
 
 const New = createToken({
     name: "New",
-    pattern: /new/
+    pattern: /new /
 });
 
 const Identifier = createToken({
@@ -382,4 +382,12 @@ export function evaluateExpression(expression: string, fc?: (start: number, end:
     }
 
     return visitor.visit(cst);
+}
+
+export function getIdentifiers(expression: string): any[] {
+    const lexResult = JavaLexer.tokenize(expression);
+    if (lexResult.errors.length > 0) {
+        return [];
+    }
+    return lexResult.tokens.filter(t => t.tokenType.name === 'Identifier');
 }

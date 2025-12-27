@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { evaluateExpression } from '../parsers/expressionMatchParser.js';
+import { evaluateExpression, getIdentifiers } from '../parsers/expressionMatchParser.js';
 
 // Types that should show pose visualization hovers
 const POSE_TYPES = [
@@ -54,25 +54,72 @@ function extractFullExpressionRange(document: vscode.TextDocument, range: vscode
     return rangeOut;
 }
 
-function evaluateExpressionAtRange(document: vscode.TextDocument, range: vscode.Range): number | null {
-    const fullExpressionRange = extractFullExpressionRange(document, range);
-    const fullExpression = document.getText(fullExpressionRange);
-    const parsed = evaluateExpression(fullExpression, (start, end) => {
-        const range = new vscode.Range(
-            fullExpressionRange.start.translate(0, start),
-            fullExpressionRange.start.translate(0, end)
+const RECURSION_LIMIT = 5;
+
+async function evaluateRecursive(document: vscode.TextDocument, range: vscode.Range, depth: number): Promise<number | null> {
+    if (depth <= 0) {
+        return null;
+    }
+
+    const expressionText = document.getText(range);
+    const identifiers = getIdentifiers(expressionText);
+    const resolvedValues = new Map<number, number>();
+
+    for (const identifier of identifiers) {
+        const identifierRange = new vscode.Range(
+            range.start.translate(0, identifier.startOffset),
+            range.start.translate(0, identifier.endOffset)
         );
 
-        // get what could have assigned to this field
-        // eg if the range is `x` and somewhere there is `int x = 1 + 2` 
-        // we should return `1 + 2`
-        // if it is never assigned to, return null
+        const definitionLocation = await vscode.commands.executeCommand<vscode.Location[]>(
+            'vscode.executeDefinitionProvider',
+            document.uri,
+            identifierRange.end.translate(0, -1)
+        );
 
-        const rightSideOfAssignment = ;
+        if (definitionLocation && definitionLocation.length > 0) {
+            const definition = definitionLocation[0];
+            const definitionDocument = await vscode.workspace.openTextDocument(definition.uri);
+            const line = definitionDocument.lineAt(definition.range.start.line);
+            const text = line.text;
 
-        return evaluateExpression(rightSideOfAssignment);
+            // Extract right hand side of assignment
+            // Looks for " = " and takes everything after it until ";" or end of line.
+            const assignmentMatch = text.match(/=\s*([^;]+)/);
+            if (assignmentMatch && assignmentMatch.index !== undefined) {
+                const rightSide = assignmentMatch[1].trim();
+                const equalsIndex = assignmentMatch.index;
+                const parensIndex = assignmentMatch[0].indexOf(assignmentMatch[1]);
+
+                // Calculate start column of the RHS
+                const rhsStartCol = equalsIndex + parensIndex;
+                const rhsEndCol = rhsStartCol + rightSide.length;
+
+                const rhsRange = new vscode.Range(
+                    new vscode.Position(definition.range.start.line, rhsStartCol),
+                    new vscode.Position(definition.range.start.line, rhsEndCol)
+                );
+
+                const evaluated = await evaluateRecursive(definitionDocument, rhsRange, depth - 1);
+                if (evaluated !== null) {
+                    resolvedValues.set(identifier.startOffset, evaluated);
+                }
+            }
+        }
+    }
+
+    const parsed = evaluateExpression(expressionText, (start, end) => {
+        if (resolvedValues.has(start)) {
+            return resolvedValues.get(start);
+        }
+        return undefined;
     });
     return parsed;
+}
+
+async function evaluateExpressionAtRange(document: vscode.TextDocument, range: vscode.Range): Promise<number | null> {
+    const fullExpressionRange = extractFullExpressionRange(document, range);
+    return evaluateRecursive(document, fullExpressionRange, RECURSION_LIMIT);
 }
 
 export class PoseHoverProvider implements vscode.HoverProvider {
@@ -117,13 +164,12 @@ export class PoseHoverProvider implements vscode.HoverProvider {
                     markdown.appendMarkdown(`\n\n*This is a ${typeName} - pose visualization coming soon!*`);
                     markdown.appendCodeblock(`\n${fullExpression}`, 'java');
 
-                    const parsed = evaluateExpressionAtRange(document, fullExpressionRange);
-
-                    markdown.appendMarkdown(`\n\n\`\`\`javascript\n${parsed}\n\`\`\``);
-
-                    markdown.appendMarkdown(`\n\n[Go to type definition](${result.uri})`);
-
-                    return new vscode.Hover(markdown, fullExpressionRange);
+                    // Return the promise directly which resolves to the hover
+                    return evaluateExpressionAtRange(document, range).then(parsed => {
+                        markdown.appendMarkdown(`\n\n\`\`\`javascript\n${parsed}\n\`\`\``);
+                        markdown.appendMarkdown(`\n\n[Go to type definition](${result.uri})`);
+                        return new vscode.Hover(markdown, fullExpressionRange);
+                    });
                 }
             }
 

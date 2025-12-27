@@ -20,12 +20,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "frc-pose-view.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "frc-pose-view.evaluateExpression",
-        "title": "Evaluate Expression"
+        "title": "FRC Pose View: Evaluate Expression"
       }
     ]
   },
