@@ -8,6 +8,10 @@ export class Pose2d {
         this.y = y;
         this.heading = heading;
     }
+
+    toString(): string {
+        return `Pose2d(${this.x}, ${this.y}, ${this.heading})`;
+    }
 }
 
 export class Rotation2d {
@@ -15,5 +19,9 @@ export class Rotation2d {
 
     constructor(heading: number) {
         this.heading = heading;
+    }
+
+    toString(): string {
+        return `Rotation2d(${this.heading})`;
     }
 }

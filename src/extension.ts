@@ -3,7 +3,8 @@
 import * as vscode from "vscode";
 
 // Types that should show pose visualization hovers
-import { PoseHoverProvider } from "./providers/hoverProvider";
+import { PoseHoverProvider } from "./providers/hoverProvider.js";
+import { evaluateExpression } from "./parsers/expressionMatchParser.js";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -26,7 +27,29 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  const disposable2 = vscode.commands.registerCommand(
+    "frc-pose-view.evaluateExpression",
+    () => {
+      // The code you place here will be executed every time your command is executed
+      // Display a message box to the user
+      // Get expression from active editor via popup
+      const expression = vscode.window.showInputBox({
+        prompt: "Enter expression to evaluate",
+      });
+      expression.then((expression) => {
+        if (expression === undefined) {
+          return;
+        }
+        const result = evaluateExpression(expression);
+        vscode.window.showInformationMessage(
+          "Result: " + result
+        );
+      });
+    }
+  );
+
   context.subscriptions.push(disposable);
+  context.subscriptions.push(disposable2);
 
   const hoverProvider = vscode.languages.registerHoverProvider("java", new PoseHoverProvider());
 

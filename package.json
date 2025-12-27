@@ -3,6 +3,7 @@
   "displayName": "FRC Pose View",
   "description": "",
   "version": "0.0.1",
+  "type": "module",
   "engines": {
     "vscode": "^1.103.0"
   },
@@ -13,11 +14,18 @@
     "onLanguage:java"
   ],
   "main": "./out/extension.js",
+  "bin": {
+    "frc-eval": "./out/cli.js"
+  },
   "contributes": {
     "commands": [
       {
         "command": "frc-pose-view.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "frc-pose-view.evaluateExpression",
+        "title": "Evaluate Expression"
       }
     ]
   },
@@ -25,19 +33,23 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "eval": "npm run compile && node ./out/cli.js",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.103.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
+    "@types/vscode": "^1.103.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
-    "eslint": "^9.32.0",
-    "typescript": "^5.9.2",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.32.0",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "chevrotain": "^11.0.3"
   }
 }

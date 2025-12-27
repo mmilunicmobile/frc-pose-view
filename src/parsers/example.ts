@@ -1,7 +1,7 @@
 // Example usage of the Parser class
 // This demonstrates parsing numerical expressions from Java code
 
-import { Parser } from './parser';
+import { Parser } from './parser.js';
 
 const parser = new Parser();
 

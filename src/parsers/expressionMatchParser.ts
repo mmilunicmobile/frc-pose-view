@@ -1,5 +1,5 @@
-import { Pose2d, Rotation2d } from "./poses";
-import { createToken, Lexer, CstParser } from "chevrotain";
+import { Pose2d, Rotation2d } from "./poses.js";
+import { createToken, Lexer, CstParser, CstNode, ICstVisitor, IToken, ParserMethod } from "chevrotain";
 
 const WhiteSpace = createToken({
     name: "WhiteSpace",
@@ -19,7 +19,7 @@ const New = createToken({
 
 const Identifier = createToken({
     name: "Identifier",
-    pattern: /[a-zA-Z_]\w*/
+    pattern: /[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*/
 });
 
 const LParen = createToken({ name: "LParen", pattern: /\(/ });
@@ -49,23 +49,23 @@ const JavaLexer = new Lexer(allTokens);
 
 class JavaExprParser extends CstParser {
     // Declare rule methods for TypeScript
-    expression = this.RULE("expression", () => { });
-    addition = this.RULE("addition", () => { });
-    multiplication = this.RULE("multiplication", () => { });
-    unary = this.RULE("unary", () => { });
-    primary = this.RULE("primary", () => { });
-    methodCall = this.RULE("methodCall", () => { });
-    constructorCall = this.RULE("constructorCall", () => { });
+    expression: ParserMethod<[], CstNode>;
+    addition: ParserMethod<[], CstNode>;
+    multiplication: ParserMethod<[], CstNode>;
+    unary: ParserMethod<[], CstNode>;
+    primary: ParserMethod<[], CstNode>;
+    methodCall: ParserMethod<[], CstNode>;
+    constructorCall: ParserMethod<[], CstNode>;
 
     constructor() {
         super(allTokens);
         const $ = this;
 
-        $.RULE("expression", () => {
+        this.expression = $.RULE("expression", () => {
             $.SUBRULE($.addition);
         });
 
-        $.RULE("addition", () => {
+        this.addition = $.RULE("addition", () => {
             $.SUBRULE($.multiplication);
             $.MANY(() => {
                 $.OR([
@@ -76,7 +76,7 @@ class JavaExprParser extends CstParser {
             });
         });
 
-        $.RULE("multiplication", () => {
+        this.multiplication = $.RULE("multiplication", () => {
             $.SUBRULE($.unary);
             $.MANY(() => {
                 $.OR([
@@ -87,7 +87,7 @@ class JavaExprParser extends CstParser {
             });
         });
 
-        $.RULE("unary", () => {
+        this.unary = $.RULE("unary", () => {
             $.OR([
                 {
                     ALT: () => {
@@ -102,7 +102,7 @@ class JavaExprParser extends CstParser {
             ]);
         });
 
-        $.RULE("primary", () => {
+        this.primary = $.RULE("primary", () => {
             $.OR([
                 { ALT: () => $.CONSUME(NumberLiteral) },
                 { ALT: () => $.SUBRULE($.methodCall) },
@@ -118,7 +118,7 @@ class JavaExprParser extends CstParser {
             ]);
         });
 
-        $.RULE("methodCall", () => {
+        this.methodCall = $.RULE("methodCall", () => {
             $.CONSUME(Identifier);
             $.CONSUME(LParen);
             $.OPTION(() => {
@@ -131,7 +131,7 @@ class JavaExprParser extends CstParser {
             $.CONSUME(RParen);
         });
 
-        $.RULE("constructorCall", () => {
+        this.constructorCall = $.RULE("constructorCall", () => {
             $.CONSUME(New);
             $.CONSUME(Identifier);
             $.CONSUME(LParen);
@@ -177,9 +177,66 @@ class JavaExprParser extends CstParser {
     }
 }
 
-const BaseVisitor = JavaExprParser.getBaseCstVisitorConstructor();
+const parserInstance = new JavaExprParser();
+const BaseJavaExprVisitor = parserInstance.getBaseCstVisitorConstructor();
 
-class JavaExprVisitor extends BaseVisitor {
+const allMethods: Record<string, (args: any) => any> = {
+    "new Pose2d 3": (args: any) => {
+        return new Pose2d(args[0], args[1], args[2]);
+    },
+    "new Rotation2d 1": (args: any) => {
+        return new Rotation2d(args[0]);
+    },
+    "Pose2d 3": (args: any) => {
+        return new Pose2d(args[0], args[1], args[2]);
+    },
+    "Rotation2d 1": (args: any) => {
+        return new Rotation2d(args[0]);
+    },
+    "Rotation2d.fromRadians 1": (args: any) => {
+        return new Rotation2d(args[0]);
+    },
+    "Rotation2d.fromDegrees 1": (args: any) => {
+        return new Rotation2d(args[0] * Math.PI / 180);
+    },
+    "Rotation2d.fromRotations 1": (args: any) => {
+        return new Rotation2d(args[0] * 2 * Math.PI);
+    }
+}
+
+const defaultFields: Record<string, any> = {
+    "Rotation2d.kZero": new Rotation2d(0),
+    "Rotation2d.kCW_Pi_2": new Rotation2d(-Math.PI / 2),
+    "Rotation2d.kCW_90deg": new Rotation2d(-Math.PI / 2),
+    "Rotation2d.kCCW_Pi_2": new Rotation2d(Math.PI / 2),
+    "Rotation2d.kCCW_90deg": new Rotation2d(Math.PI / 2),
+    "Rotation2d.kPi": new Rotation2d(Math.PI),
+    "Rotation2d.k180deg": new Rotation2d(Math.PI),
+    "Pose2d.kZero": new Pose2d(0, 0, new Rotation2d(0)),
+    "Math.PI": Math.PI,
+    "Math.TAU": Math.PI * 2,
+    "PI": Math.PI,
+    "TAU": Math.PI * 2,
+}
+
+const fetchField = (ctx: any) => {
+    const fieldName = ctx.image;
+    const start = ctx.startOffset;
+    const end = ctx.endOffset;
+
+    if (defaultFields[fieldName]) return defaultFields[fieldName];
+
+    if (fieldCallback) {
+        const result = fieldCallback(start, end + 1);
+        if (result) return result;
+    }
+
+    return "unknown field: " + fieldName;
+}
+
+let fieldCallback: ((start: number, end: number) => any) | undefined;
+
+class JavaExprVisitor extends BaseJavaExprVisitor {
     constructor() {
         super();
         this.validateVisitor();
@@ -260,16 +317,69 @@ class JavaExprVisitor extends BaseVisitor {
             return this.visit(ctx.expression);
         }
 
-        // Method calls, constructor calls, and identifiers are not literals
-        // Return null to indicate we can't evaluate this as a constant
+        if (ctx.methodCall) {
+            return this.visit(ctx.methodCall);
+        }
+
+        if (ctx.constructorCall) {
+            return this.visit(ctx.constructorCall);
+        }
+
+        if (ctx.Identifier) {
+            return fetchField(ctx.Identifier[0]);
+
+        }
+
         return null;
+    }
+
+    methodCall(ctx: any): number | null {
+        const methodName: string = ctx.Identifier[0].image + " " + ctx.expression.length;
+
+        if (!allMethods[methodName]) return null;
+
+        let args = [];
+
+        if (ctx.expression) {
+            args = ctx.expression.map((expr: any) => this.visit(expr));
+        }
+
+        return allMethods[methodName](args);
+    }
+
+    constructorCall(ctx: any): number | null {
+        const methodName: string = "new " + ctx.Identifier[0].image + " " + ctx.expression.length;
+
+        if (!allMethods[methodName]) return null;
+
+        let args = [];
+
+        if (ctx.expression) {
+            args = ctx.expression.map((expr: any) => this.visit(expr));
+        }
+
+        return allMethods[methodName](args);
     }
 }
 
-const parser = new JavaExprParser();
+const parserInstanceNew = new JavaExprParser();
 const visitor = new JavaExprVisitor();
 
-export function evaluateExpression(expression: string): number | null {
-    const cst = parser.parse(expression);
+export function evaluateExpression(expression: string, fc?: (start: number, end: number) => any): number | null {
+    const lexResult = JavaLexer.tokenize(expression);
+    if (lexResult.errors.length > 0) {
+        console.error('Lexical errors:', lexResult.errors);
+        return null;
+    }
+
+    fieldCallback = fc;
+    parserInstanceNew.input = lexResult.tokens;
+
+    const cst = parserInstanceNew.expression();
+    if (cst === null) {
+        console.error('Parsing failed');
+        return null;
+    }
+
     return visitor.visit(cst);
 }
