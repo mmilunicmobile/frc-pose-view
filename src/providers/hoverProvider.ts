@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { evaluateExpression, getIdentifiers } from '../parsers/expressionMatchParser.js';
+import { Pose2d, Rotation2d, Translation2d } from '../parsers/poses.js';
 
 // Types that should show pose visualization hovers
 const POSE_TYPES = [
@@ -316,7 +317,7 @@ async function evaluateRecursive(document: vscode.TextDocument, range: vscode.Ra
     return parsed;
 }
 
-async function evaluateExpressionAtRange(document: vscode.TextDocument, range: vscode.Range): Promise<number | null> {
+async function evaluateExpressionAtRange(document: vscode.TextDocument, range: vscode.Range): Promise<any> {
     // The range passed here is just the word range, so we need to find the full expression
     // using the start/end logic?
     // Actually, provideHover passes the word range.
@@ -421,6 +422,8 @@ export class PoseHoverProvider implements vscode.HoverProvider {
 
     private generateHover(document: vscode.TextDocument, position: vscode.Position, word: string, typeName: string, typeDefUri: vscode.Uri | undefined): Promise<vscode.Hover | undefined> {
         const markdown = new vscode.MarkdownString();
+        markdown.isTrusted = true;
+        markdown.supportHtml = true;
 
         // Get full expression that is being hovered
         const fullExpressionRange = findExpressionAtPosition(document, position);
@@ -433,9 +436,72 @@ export class PoseHoverProvider implements vscode.HoverProvider {
         return evaluateExpressionAtRange(document, fullExpressionRange).then(parsed => {
             if (parsed !== null && parsed !== undefined) {
                 markdown.appendCodeblock(`... = ${parsed}`, 'java');
+            }
+
+            // Attempt to parse X, Y, Rotation from the expression string
+            // Regex for: new Pose2d(x, y, new Rotation2d(rot)) or Pose2d(x, y, rot)
+            // This is a naive implementation; ideal would be deep AST evaluation.
+
+            const FIELD_WIDTH_M = 16.54;
+            const FIELD_HEIGHT_M = 8.21;
+
+            let x = FIELD_WIDTH_M / 2;
+            let y = FIELD_HEIGHT_M / 2;
+            let rotDegrees = 0;
+
+            // Match: new Pose2d(1.0, 2.0, ...)
+            // or: new Translation2d(1.0, 2.0)
+            if (parsed instanceof Pose2d) {
+                x = parsed.getX();
+                y = parsed.getY();
+                rotDegrees = parsed.getRotation().getDegrees();
+            } else if (parsed instanceof Translation2d) {
+                x = parsed.getX();
+                y = parsed.getY();
+            } else {
                 return new vscode.Hover(markdown, fullExpressionRange);
             }
-            return undefined;
+
+            // Field Dimensions (FRC 2024 approx)
+
+
+            // Scale and ViewBox
+            const vbWidth = 1654;
+            const vbHeight = 821;
+            const scale = vbWidth / FIELD_WIDTH_M; // ~100
+
+            const svgX = x * scale;
+            const svgY = vbHeight - (y * scale);
+            const svgRot = -rotDegrees; // CCW positive -> CW positive for SVG transform
+
+            markdown.appendMarkdown(`### ${typeName} Visualization\n\n`);
+
+            // Pass the parsed pose to the command
+            const poseData = { x, y, rotation: rotDegrees };
+            const commandUri = vscode.Uri.parse(
+                `command:frc-pose-view.focusFieldView?${encodeURIComponent(JSON.stringify(poseData))}`
+            );
+
+            markdown.appendMarkdown(`[$(globe) Open Interactive Field](${commandUri})\n\n`);
+
+            const previewSvg = `
+<svg width="400" height="200" viewBox="0 0 ${vbWidth} ${vbHeight}" xmlns="http://www.w3.org/2000/svg" style="background-color: #444;">
+  <!-- Field Outline -->
+  <rect x="0" y="0" width="${vbWidth}" height="${vbHeight}" fill="#333" stroke="#555" stroke-width="10"/>
+  <rect x="0" y="0" width="100" height="${vbHeight}" fill="blue" fill-opacity="0.2" />
+  <rect x="${vbWidth - 100}" y="0" width="100" height="${vbHeight}" fill="red" fill-opacity="0.2" />
+  
+  <!-- Robot Marker -->
+  <g transform="translate(${svgX}, ${svgY}) rotate(${svgRot})">
+    <rect x="-27" y="-30" width="54" height="60" fill="orange" stroke="black" stroke-width="5" />
+    <line x1="0" y1="0" x2="27" y2="0" stroke="black" stroke-width="2" />
+  </g>
+</svg>
+`;
+            const dataUri = `data:image/svg+xml;base64,${Buffer.from(previewSvg).toString('base64')}`;
+            markdown.appendMarkdown(`![Field Preview](${dataUri})`);
+
+            return new vscode.Hover(markdown, fullExpressionRange);
         });
     }
 }

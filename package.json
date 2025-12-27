@@ -18,6 +18,24 @@
     "frc-eval": "./out/cli.js"
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "frc-pose-view-explorer",
+          "title": "FRC Pose View",
+          "icon": "resources/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "frc-pose-view-explorer": [
+        {
+          "type": "webview",
+          "id": "frc-pose-view.fieldView",
+          "name": "Field View"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "frc-pose-view.evaluateExpression",

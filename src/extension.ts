@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 
 // Types that should show pose visualization hovers
 import { PoseHoverProvider } from "./providers/hoverProvider.js";
+import { FieldViewProvider } from "./providers/FieldViewProvider.js";
 import { evaluateExpression } from "./parsers/expressionMatchParser.js";
 
 // This method is called when your extension is activated
@@ -52,8 +53,23 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(disposable2);
 
   const hoverProvider = vscode.languages.registerHoverProvider("java", new PoseHoverProvider());
-
   context.subscriptions.push(hoverProvider);
+
+  const fieldViewProvider = new FieldViewProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(FieldViewProvider.viewType, fieldViewProvider)
+  );
+
+  context.subscriptions.push(vscode.commands.registerCommand('frc-pose-view.focusFieldView', (poseData: any) => {
+    vscode.commands.executeCommand('frc-pose-view.fieldView.focus');
+    if (poseData && typeof poseData === 'object') {
+      const { x, y, rotation } = poseData;
+      // Short delay to ensure view is ready/visible
+      setTimeout(() => {
+        fieldViewProvider.updatePose(x || 0, y || 0, rotation || 0);
+      }, 500);
+    }
+  }));
 }
 
 // This method is called when your extension is deactivated

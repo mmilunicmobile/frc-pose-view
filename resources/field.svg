@@ -1,0 +1,24 @@
+<svg width="1654" height="821" viewBox="0 0 1654 821" xmlns="http://www.w3.org/2000/svg">
+  <!-- Field Background -->
+  <rect x="0" y="0" width="1654" height="821" fill="#444" />
+  
+  <!-- Alliance Walls -->
+  <rect x="0" y="0" width="100" height="821" fill="rgba(0, 0, 255, 0.2)" /> <!-- Blue Alliance -->
+  <rect x="1554" y="0" width="100" height="821" fill="rgba(255, 0, 0, 0.2)" /> <!-- Red Alliance -->
+
+  <!-- Center Line -->
+  <line x1="827" y1="0" x2="827" y2="821" stroke="white" stroke-width="5" stroke-dasharray="20,10" />
+
+  <!-- Notes: Generic Field Lines -->
+  <rect x="100" y="100" width="1454" height="621" fill="none" stroke="#666" stroke-width="2" />
+  
+  <!-- Grid -->
+  <defs>
+    <pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse">
+      <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#555" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <text x="827" y="410" font-family="Arial" font-size="50" fill="white" text-anchor="middle" opacity="0.5">FRC 2024 FIELD (PLACEHOLDER)</text>
+</svg>
