@@ -205,20 +205,22 @@ function findExpressionAtPosition(document: vscode.TextDocument, position: vscod
 
 const RECURSION_LIMIT = 20;
 
-async function evaluateRecursive(document: vscode.TextDocument, range: vscode.Range, depth: number): Promise<number | null> {
+async function evaluateRecursive(document: vscode.TextDocument, range: vscode.Range, depth: number): Promise<any | null> {
     if (depth <= 0) {
         return null;
     }
 
     const expressionText = document.getText(range);
     const identifiers = getIdentifiers(expressionText);
-    const resolvedValues = new Map<number, number>();
+    const resolvedValues = new Map<number, any>();
+
+    const rangeStartOffset = document.offsetAt(range.start);
 
     for (const identifier of identifiers) {
-        const identifierRange = new vscode.Range(
-            range.start.translate(0, identifier.startOffset),
-            range.start.translate(0, identifier.endOffset)
-        );
+        const identifierStart = document.positionAt(rangeStartOffset + identifier.startOffset);
+        const identifierEnd = document.positionAt(rangeStartOffset + identifier.endOffset);
+
+        const identifierRange = new vscode.Range(identifierStart, identifierEnd);
 
         const definitionLocation = await vscode.commands.executeCommand<vscode.Location[]>(
             'vscode.executeDefinitionProvider',
@@ -231,27 +233,37 @@ async function evaluateRecursive(document: vscode.TextDocument, range: vscode.Ra
             const definitionDocument = await vscode.workspace.openTextDocument(definition.uri);
             const startPos = definition.range.start;
 
-            // Search forward for assignment "=" and then termination ";"
-            // We need to read line by line starting from definition line
+            // Search forward for assignment "="
+            // Stop if we hit ";", "{", "}", "(" which imply end of definition or start of block/method
             let currentLineIdx = startPos.line;
             let currentLineText = definitionDocument.lineAt(currentLineIdx).text.substring(startPos.character);
 
-            // 1. Find the '='
             let equalsFound = false;
             let equalsPos: vscode.Position | null = null;
             let checks = 0;
-            const limit = 50; // Scan at most 50 lines for assignment
+            const limit = 50;
 
             while (checks < limit && currentLineIdx < definitionDocument.lineCount) {
-                const equalsIndex = currentLineText.indexOf('=');
-                if (equalsIndex !== -1) {
-                    equalsFound = true;
-                    // Calculate absolute position
-                    // If multiple lines, we need to be careful. 'currentLineText' is partial for the first line.
-                    const charOffset = (currentLineIdx === startPos.line) ? startPos.character + equalsIndex : equalsIndex;
-                    equalsPos = new vscode.Position(currentLineIdx, charOffset);
+                const candidates = [
+                    { char: '=', idx: currentLineText.indexOf('=') },
+                    { char: ';', idx: currentLineText.indexOf(';') },
+                    { char: '{', idx: currentLineText.indexOf('{') },
+                    { char: '}', idx: currentLineText.indexOf('}') },
+                    { char: '(', idx: currentLineText.indexOf('(') }
+                ].filter(c => c.idx !== -1).sort((a, b) => a.idx - b.idx);
+
+                if (candidates.length > 0) {
+                    const match = candidates[0];
+                    if (match.char === '=') {
+                        equalsFound = true;
+                        const charOffset = (currentLineIdx === startPos.line) ? startPos.character + match.idx : match.idx;
+                        equalsPos = new vscode.Position(currentLineIdx, charOffset);
+                    }
+                    // If we found '=', we succeeded. 
+                    // If we found ';', '{', '}', '(', we failed to find an assignment for THIS symbol.
                     break;
                 }
+
                 currentLineIdx++;
                 if (currentLineIdx < definitionDocument.lineCount) {
                     currentLineText = definitionDocument.lineAt(currentLineIdx).text;
@@ -266,7 +278,7 @@ async function evaluateRecursive(document: vscode.TextDocument, range: vscode.Ra
 
                 let scanPos = equalsPos.translate(0, 1); // Start after '='
                 let scanChecks = 0;
-
+                // Scan for semicolon termination
                 while (scanChecks < limit && scanPos.line < definitionDocument.lineCount) {
                     const lineText = definitionDocument.lineAt(scanPos.line).text;
                     const semiIndex = lineText.indexOf(';', (scanPos.line === equalsPos.line) ? scanPos.character : 0);
