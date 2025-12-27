@@ -9,9 +9,9 @@ public class Main {
         final Rotation2d skib = Rotation2d.fromDegrees(90);
         final Pose2d pose = (new Pose2d(0, 0, skib));
         final Pose2d newPose = pose;
-        final Rotation2d rotation = Rotation2d.fromDegrees(90);
+        final Rotation2d rotation = Rotation2d.fromDegrees(180);
 
-        System.out.println(pose.x());
-        System.out.println(rotation);
+        System.out.println(pose.getX());
+        System.out.println(rotation.getRadians());
     }
 }

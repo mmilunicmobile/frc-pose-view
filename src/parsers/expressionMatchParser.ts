@@ -19,9 +19,10 @@ const New = createToken({
 
 const Identifier = createToken({
     name: "Identifier",
-    pattern: /[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*/
+    pattern: /[a-zA-Z_]\w*/
 });
 
+const Dot = createToken({ name: "Dot", pattern: /\./ });
 const LParen = createToken({ name: "LParen", pattern: /\(/ });
 const RParen = createToken({ name: "RParen", pattern: /\)/ });
 const Comma = createToken({ name: "Comma", pattern: /,/ });
@@ -36,6 +37,7 @@ const allTokens = [
     New,
     NumberLiteral,
     Identifier,
+    Dot,
     LParen,
     RParen,
     Comma,
@@ -54,7 +56,9 @@ class JavaExprParser extends CstParser {
     multiplication: ParserMethod<[], CstNode>;
     unary: ParserMethod<[], CstNode>;
     primary: ParserMethod<[], CstNode>;
-    methodCall: ParserMethod<[], CstNode>;
+    atomic: ParserMethod<[], CstNode>;
+    chainLink: ParserMethod<[], CstNode>;
+    // methodCall property removed
     constructorCall: ParserMethod<[], CstNode>;
 
     constructor() {
@@ -103,75 +107,79 @@ class JavaExprParser extends CstParser {
         });
 
         this.primary = $.RULE("primary", () => {
+            $.SUBRULE($.atomic);
+            $.MANY(() => {
+                $.SUBRULE($.chainLink);
+            });
+        });
+
+        this.chainLink = $.RULE("chainLink", () => {
+            $.CONSUME(Dot);
+            $.CONSUME(Identifier);
+            $.OPTION(() => {
+                $.CONSUME(LParen);
+                $.OPTION2(() => {
+                    $.SUBRULE($.expression);
+                    $.MANY(() => {
+                        $.CONSUME(Comma);
+                        $.SUBRULE2($.expression);
+                    });
+                });
+                $.CONSUME(RParen);
+            });
+        });
+
+        this.atomic = $.RULE("atomic", () => {
             $.OR([
                 { ALT: () => $.CONSUME(NumberLiteral) },
-                { ALT: () => $.SUBRULE($.methodCall) },
                 { ALT: () => $.SUBRULE($.constructorCall) },
-                { ALT: () => $.CONSUME(Identifier) },
                 {
                     ALT: () => {
-                        $.CONSUME(LParen);
-                        $.SUBRULE($.expression);
-                        $.CONSUME(RParen);
+                        $.CONSUME(Identifier);
+                        $.OPTION(() => {
+                            $.CONSUME(LParen);
+                            $.OPTION2(() => {
+                                $.SUBRULE($.expression);
+                                $.MANY(() => {
+                                    $.CONSUME(Comma);
+                                    $.SUBRULE2($.expression);
+                                });
+                            });
+                            $.CONSUME(RParen);
+                        });
+                    }
+                },
+                {
+                    ALT: () => {
+                        $.CONSUME2(LParen);
+                        $.SUBRULE3($.expression);
+                        $.CONSUME2(RParen);
                     }
                 }
             ]);
         });
 
-        this.methodCall = $.RULE("methodCall", () => {
-            $.CONSUME(Identifier);
-            $.CONSUME(LParen);
-            $.OPTION(() => {
-                $.SUBRULE($.expression);
-                $.MANY(() => {
-                    $.CONSUME(Comma);
-                    $.SUBRULE2($.expression);
-                });
-            });
-            $.CONSUME(RParen);
-        });
+        // Note: methodCall and constructorCall now handle optional chains in the identifier for static calls
+        // methodCall rule removed
+
 
         this.constructorCall = $.RULE("constructorCall", () => {
             $.CONSUME(New);
             $.CONSUME(Identifier);
+            $.MANY(() => {
+                $.CONSUME(Dot);
+                $.CONSUME2(Identifier);
+            });
             $.CONSUME(LParen);
             $.OPTION(() => {
                 $.SUBRULE($.expression);
-                $.MANY(() => {
+                $.MANY2(() => {
                     $.CONSUME(Comma);
                     $.SUBRULE2($.expression);
                 });
             });
             $.CONSUME(RParen);
         });
-
-        // Diagram of the grammar
-        // expression
-        //   : addition
-        //
-        // addition
-        //   : multiplication (( '+' | '-' ) multiplication)*
-        //
-        // multiplication
-        //   : unary (( '*' | '/' ) unary)*
-        //
-        // unary
-        //   : '+' unary
-        //   | '-' unary
-        //   | primary
-        //
-        // primary
-        //   : NumberLiteral
-        //   | methodCall
-        //   | constructorCall
-        //   | Identifier
-        //   | '(' expression ')'
-        //
-        // methodCall
-        //   : Identifier '(' ( expression ( ',' expression )* )? ')'
-        //
-        // constructorCall
-        //   : New Identifier '(' ( expression ( ',' expression )* )? ')'
 
         this.performSelfAnalysis();
     }
@@ -219,7 +227,13 @@ const defaultFields: Record<string, any> = {
     "TAU": Math.PI * 2,
 }
 
+const allowedMethods = new Set([
+    "getX", "getY", "getRotation",
+    "getDegrees", "getRadians", "getSin", "getCos"
+]);
+
 const fetchField = (ctx: any) => {
+    // Basic field fetching from single identifier
     const fieldName = ctx.image;
     const start = ctx.startOffset;
     const end = ctx.endOffset;
@@ -231,7 +245,24 @@ const fetchField = (ctx: any) => {
         if (result) return result;
     }
 
-    return "unknown field: " + fieldName;
+    // Return the name if unknown, to see if it's part of a static chain handled later?
+    // Currently no logic for static chain property access like "Rotation2d.kZero" via property access format.
+    // "Rotation2d.kZero" must be accessed via fetchField with the full string, but now Identifier doesn't have dots.
+    // So "Rotation2d.kZero" is "Rotation2d" (atomic) . "kZero" (chain).
+    // fetchField("Rotation2d") -> unknown or undefined?
+    // If we want to support defaults:
+    // We should expose the class objects in defaultFields or fieldCallback as well?
+    // Only "Posed2d.kZero" is in defaultFields. "Pose2d" is NOT.
+    // So "Pose2d" returns "unknown field: Pose2d".
+    // Then .kZero tries to access property on string "unknown...".
+
+    // To fix this without major rework:
+    // If the atomic part returns a string that looks like a field name, 
+    // AND the chain link adds to it, we could try to reconstruct the name?
+    // But primary calls visit(atomic) which returns final value.
+
+    // For now, I will return the string fieldName if not found.
+    return fieldName;
 }
 
 let fieldCallback: ((start: number, end: number) => any) | undefined;
@@ -242,118 +273,163 @@ class JavaExprVisitor extends BaseJavaExprVisitor {
         this.validateVisitor();
     }
 
-    expression(ctx: any): number | null {
+    expression(ctx: any): any {
         return this.visit(ctx.addition);
     }
 
-    addition(ctx: any): number | null {
-        // Start with the first multiplication term
+    addition(ctx: any): any {
         let result = this.visit(ctx.multiplication[0]);
-        if (result === null) return null;
-
-        // Process each subsequent operation
         for (let i = 1; i < ctx.multiplication.length; i++) {
             const nextValue = this.visit(ctx.multiplication[i]);
-            if (nextValue === null) return null;
-
-            // Check which operator was used
             if (ctx.Plus && ctx.Plus[i - 1]) {
                 result += nextValue;
             } else if (ctx.Minus && ctx.Minus[i - 1]) {
                 result -= nextValue;
             }
         }
-
         return result;
     }
 
-    multiplication(ctx: any): number | null {
-        // Start with the first unary term
+    multiplication(ctx: any): any {
         let result = this.visit(ctx.unary[0]);
-        if (result === null) return null;
-
-        // Process each subsequent operation
         for (let i = 1; i < ctx.unary.length; i++) {
             const nextValue = this.visit(ctx.unary[i]);
-            if (nextValue === null) return null;
-
-            // Check which operator was used
             if (ctx.Mult && ctx.Mult[i - 1]) {
                 result *= nextValue;
             } else if (ctx.Div && ctx.Div[i - 1]) {
                 result /= nextValue;
             }
         }
+        return result;
+    }
+
+    unary(ctx: any): any {
+        if (ctx.unary) {
+            const value = this.visit(ctx.unary);
+            if (ctx.Plus) return +value;
+            if (ctx.Minus) return -value;
+        }
+        return this.visit(ctx.primary);
+    }
+
+    primary(ctx: any): any {
+        let result = this.visit(ctx.atomic);
+
+        if (ctx.chainLink) {
+            for (const link of ctx.chainLink) {
+                result = this.visit(link, result);
+            }
+        }
+
+        if (typeof result === 'string' && result.startsWith("unknown field")) {
+            return null;
+        }
 
         return result;
     }
 
-    unary(ctx: any): number | null {
-        // Check if there's a unary operator
-        if (ctx.unary) {
-            // Recursive unary case
-            const value = this.visit(ctx.unary);
-            if (value === null) return null;
+    chainLink(ctx: any, param: any): any {
+        let result = param;
+        const memberName = ctx.Identifier[0].image;
 
-            if (ctx.Plus) {
-                return +value;
-            } else if (ctx.Minus) {
-                return -value;
+        // Check if we are building up a static field name string
+        if (typeof result === 'string') {
+            const compositeName = result + "." + memberName;
+
+            // Check if it is a known field
+            if (defaultFields[compositeName]) {
+                result = defaultFields[compositeName];
+            }
+            // Check if it's a known method call (e.g. Rotation2d.fromDegrees(...))
+            else if (ctx.LParen) {
+                // logic handled below in call section
+                // We keep result as string to construct method name
+                result = compositeName;
+            }
+            else {
+                result = compositeName;
             }
         }
 
-        // No unary operator, visit primary
-        return this.visit(ctx.primary);
+        // If we have a call
+        if (ctx.LParen) {
+            let args = [];
+            if (ctx.expression) {
+                args = ctx.expression.map((expr: any) => this.visit(expr));
+            }
+
+            // 1. Check for static method in allMethods (if result is string)
+            if (typeof result === 'string') {
+                const methodName = result + " " + args.length;
+                if (allMethods[methodName]) {
+                    result = allMethods[methodName](args);
+                    return result;
+                }
+            }
+
+            // 2. Check for instance method
+            if (typeof result !== 'string' && result && typeof result[memberName] === 'function') {
+                if (!allowedMethods.has(memberName)) return null;
+                result = result[memberName](...args);
+            } else if (typeof result !== 'string') {
+                // Error
+                return null;
+            }
+        } else {
+            // Field access on object (if we didn't already resolve static)
+            if (typeof result !== 'string' && result && result[memberName] !== undefined) {
+                result = result[memberName];
+            }
+        }
+
+        return result;
     }
 
-    primary(ctx: any): number | null {
-        // Number literal
+    atomic(ctx: any): any {
         if (ctx.NumberLiteral) {
             return parseFloat(ctx.NumberLiteral[0].image);
         }
-
-        // Parenthesized expression
         if (ctx.expression) {
             return this.visit(ctx.expression);
         }
-
-        if (ctx.methodCall) {
-            return this.visit(ctx.methodCall);
-        }
-
         if (ctx.constructorCall) {
             return this.visit(ctx.constructorCall);
         }
-
         if (ctx.Identifier) {
-            return fetchField(ctx.Identifier[0]);
+            const name = ctx.Identifier[0].image;
 
+            if (ctx.LParen) { // It's a call like methods(...)
+                let args = [];
+                if (ctx.expression) {
+                    args = ctx.expression.map((expr: any) => this.visit(expr));
+                }
+                const methodName = name + " " + args.length;
+                if (allMethods[methodName]) {
+                    return allMethods[methodName](args);
+                }
+                return null;
+            } else {
+                return fetchField(ctx.Identifier[0]);
+            }
         }
-
         return null;
     }
 
-    methodCall(ctx: any): number | null {
-        const methodName: string = ctx.Identifier[0].image + " " + ctx.expression.length;
+    // methodCall visitor removed as the rule is removed and logic merged.
 
-        if (!allMethods[methodName]) return null;
+    constructorCall(ctx: any): any {
+        const nameParts = ctx.Identifier.map((t: any) => t.image);
+        const methodNamePrefix = "new " + nameParts.join(".");
 
-        let args = [];
-
+        let argCount = 0;
         if (ctx.expression) {
-            args = ctx.expression.map((expr: any) => this.visit(expr));
+            argCount = ctx.expression.length;
         }
-
-        return allMethods[methodName](args);
-    }
-
-    constructorCall(ctx: any): number | null {
-        const methodName: string = "new " + ctx.Identifier[0].image + " " + ctx.expression.length;
+        const methodName = methodNamePrefix + " " + argCount;
 
         if (!allMethods[methodName]) return null;
 
         let args = [];
-
         if (ctx.expression) {
             args = ctx.expression.map((expr: any) => this.visit(expr));
         }
@@ -369,19 +445,25 @@ export function evaluateExpression(expression: string, fc?: (start: number, end:
     const lexResult = JavaLexer.tokenize(expression);
     if (lexResult.errors.length > 0) {
         console.error('Lexical errors:', lexResult.errors);
-        return null;
+        return null; // Return null on error
     }
 
     fieldCallback = fc;
     parserInstanceNew.input = lexResult.tokens;
 
     const cst = parserInstanceNew.expression();
-    if (cst === null) {
-        console.error('Parsing failed');
+    if (parserInstanceNew.errors.length > 0) {
+        console.error('Parsing errors:', parserInstanceNew.errors);
         return null;
     }
 
-    return visitor.visit(cst);
+    const result = visitor.visit(cst);
+    if (typeof result === 'number') return result;
+    // If result is object, extract value? 
+    // Usually we expect number at the end, but maybe object if just 'new Pose2d(...)'
+    // The original parser returns 'number | null'.
+    // Here we can return whatever. Poses.toString handles print.
+    return result;
 }
 
 export function getIdentifiers(expression: string): any[] {

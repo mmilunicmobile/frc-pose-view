@@ -12,6 +12,18 @@ export class Pose2d {
     toString(): string {
         return `Pose2d(${this.x}, ${this.y}, ${this.heading})`;
     }
+
+    getX(): number {
+        return this.x;
+    }
+
+    getY(): number {
+        return this.y;
+    }
+
+    getRotation(): Rotation2d {
+        return this.heading;
+    }
 }
 
 export class Rotation2d {
@@ -23,5 +35,21 @@ export class Rotation2d {
 
     toString(): string {
         return `Rotation2d(${this.heading})`;
+    }
+
+    getDegrees(): number {
+        return this.heading * 180 / Math.PI;
+    }
+
+    getRadians(): number {
+        return this.heading;
+    }
+
+    getSin(): number {
+        return Math.sin(this.heading);
+    }
+
+    getCos(): number {
+        return Math.cos(this.heading);
     }
 }
